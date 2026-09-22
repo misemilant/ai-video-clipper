@@ -15,38 +15,58 @@ export async function POST(req: Request) {
 
     const promptText = `Kamu adalah AI Video Editor profesional. Analisis video YouTube berikut: ${videoUrl}. Hasilkan 3 rekomendasi klip pendek menarik (TikTok/Reels). Kembalikan HANYA format JSON valid seperti ini tanpa markdown: {"clips": [{"id":"1", "title":"Judul Klip", "startTime":"00:30", "endTime":"01:15", "viralScore": 90, "summary":"Rangkuman singkat", "reason":"Alasan viral"}]}`;
 
-    // Menggunakan model gemini-1.5-flash-latest yang stabil
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: promptText }] }]
-      })
-    });
+    // Daftar nama model Gemini yang dicoba berturut-turut jika salah satu tidak tersedia
+    const candidateModels = [
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-1.5-flash"
+    ];
 
-    const data = await response.json();
+    let lastErrorMsg = "";
+    let resultJson = null;
 
-    if (!response.ok || !data.candidates || !data.candidates[0]) {
-      const errorMsg = data?.error?.message || "Respons Gemini AI tidak valid atau API Key salah.";
-      return NextResponse.json({ message: `Gemini Error: ${errorMsg}` }, { status: 500 });
+    for (const model of candidateModels) {
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }]
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+          let content = data.candidates[0].content.parts[0].text.trim();
+          
+          if (content.startsWith("```json")) {
+            content = content.replace(/^```json/, "").replace(/```$/, "").trim();
+          } else if (content.startsWith("```")) {
+            content = content.replace(/^```/, "").replace(/```$/, "").trim();
+          }
+
+          resultJson = JSON.parse(content);
+          break; // Berhasil, keluar dari loop
+        } else {
+          lastErrorMsg = data?.error?.message || `Model ${model} gagal memproses.`;
+        }
+      } catch (e: any) {
+        lastErrorMsg = e.message;
+      }
     }
 
-    let content = data.candidates[0].content.parts[0].text.trim();
-    
-    if (content.startsWith("```json")) {
-      content = content.replace(/^```json/, "").replace(/```$/, "").trim();
-    } else if (content.startsWith("```")) {
-      content = content.replace(/^```/, "").replace(/```$/, "").trim();
+    if (!resultJson) {
+      return NextResponse.json({ message: `Gemini Error: ${lastErrorMsg}` }, { status: 500 });
     }
-
-    const result = JSON.parse(content);
 
     return NextResponse.json({
       success: true,
       videoUrl,
-      clips: result.clips || [],
+      clips: resultJson.clips || [],
     });
   } catch (error: any) {
     return NextResponse.json(
