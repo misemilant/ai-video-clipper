@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Video, Sparkles, Download, Play, RefreshCw, Layers } from "lucide-react";
+import { Video, Sparkles, Download, Play, RefreshCw, Layers, X } from "lucide-react";
 
 interface Clip {
   id: string;
@@ -18,6 +18,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [clips, setClips] = useState<Clip[]>([]);
   const [error, setError] = useState("");
+  const [activeClip, setActiveClip] = useState<Clip | null>(null);
 
   const handleProcess = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +27,7 @@ export default function Home() {
     setLoading(true);
     setError("");
     setClips([]);
+    setActiveClip(null);
 
     try {
       const res = await fetch("/api/process", {
@@ -47,6 +49,23 @@ export default function Home() {
       setLoading(false);
     }
   };
+
+  // Konversi format MM:SS atau HH:MM:SS ke detik
+  const timeToSeconds = (timeStr: string) => {
+    const parts = timeStr.split(":").map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return 0;
+  };
+
+  // Ekstrak YouTube Video ID
+  const getYouTubeId = (urlStr: string) => {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = urlStr.match(regExp);
+    return match && match[2].length === 11 ? match[2] : null;
+  };
+
+  const videoId = getYouTubeId(url);
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-12">
@@ -101,6 +120,39 @@ export default function Home() {
         )}
       </div>
 
+      {/* Modal Preview Video Player */}
+      {activeClip && videoId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-4 relative shadow-2xl">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-slate-800">
+              <h3 className="font-bold text-lg text-indigo-400 line-clamp-1">{activeClip.title}</h3>
+              <button
+                onClick={() => setActiveClip(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="relative aspect-video rounded-xl overflow-hidden bg-black mb-4">
+              <iframe
+                src={`https://www.youtube.com/embed/${videoId}?start=${timeToSeconds(activeClip.startTime)}&end=${timeToSeconds(activeClip.endTime)}&autoplay=1`}
+                title={activeClip.title}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              ></iframe>
+            </div>
+
+            <p className="text-xs text-slate-400 mb-2">{activeClip.reason}</p>
+            <div className="flex justify-between items-center text-xs text-indigo-300 font-mono bg-slate-950 p-2 rounded-lg">
+              <span>Timestamp: {activeClip.startTime} - {activeClip.endTime}</span>
+              <span>Score: {activeClip.viralScore}%</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Results Section */}
       {clips.length > 0 && (
         <div className="space-y-6">
@@ -137,12 +189,20 @@ export default function Home() {
                 </div>
 
                 <div className="pt-5 mt-4 border-t border-slate-800/80 flex items-center gap-2">
-                  <button className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors">
+                  <button
+                    onClick={() => setActiveClip(clip)}
+                    className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium py-2 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                  >
                     <Play className="w-4 h-4" /> Preview
                   </button>
-                  <button className="flex-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-sm font-medium py-2 rounded-lg flex items-center justify-center gap-1.5 border border-indigo-500/30 transition-colors">
+                  <a
+                    href={`https://y2mate.is/download?url=${encodeURIComponent(url)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-sm font-medium py-2 rounded-lg flex items-center justify-center gap-1.5 border border-indigo-500/30 transition-colors text-center"
+                  >
                     <Download className="w-4 h-4" /> Export
-                  </button>
+                  </a>
                 </div>
               </div>
             ))}
