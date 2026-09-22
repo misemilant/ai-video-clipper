@@ -13,60 +13,40 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "GEMINI_API_KEY belum dipasang di Environment Variables Vercel!" }, { status: 500 });
     }
 
-    const promptText = `Kamu adalah AI Video Editor profesional. Analisis video YouTube berikut: ${videoUrl}. Hasilkan 3 rekomendasi klip pendek menarik (TikTok/Reels). Kembalikan HANYA format JSON valid seperti ini tanpa markdown: {"clips": [{"id":"1", "title":"Judul Klip", "startTime":"00:30", "endTime":"01:15", "viralScore": 90, "summary":"Rangkuman singkat", "reason":"Alasan viral"}]}`;
+    const promptText = `Kamu adalah AI Video Editor profesional. Analisis video YouTube berikut: ${videoUrl}. Hasilkan 3 rekomendasi klip pendek menarik (TikTok/Reels). Kembalikan JSON dengan struktur seperti ini: {"clips": [{"id":"1", "title":"Judul Klip", "startTime":"00:30", "endTime":"01:15", "viralScore": 90, "summary":"Rangkuman singkat", "reason":"Alasan viral"}]}`;
 
-    // Daftar nama model Gemini yang dicoba berturut-turut jika salah satu tidak tersedia
-    const candidateModels = [
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-      "gemini-1.5-flash"
-    ];
-
-    let lastErrorMsg = "";
-    let resultJson = null;
-
-    for (const model of candidateModels) {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": apiKey
-          },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: promptText }] }]
-          })
-        });
-
-        const data = await response.json();
-
-        if (response.ok && data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
-          let content = data.candidates[0].content.parts[0].text.trim();
-          
-          if (content.startsWith("```json")) {
-            content = content.replace(/^```json/, "").replace(/```$/, "").trim();
-          } else if (content.startsWith("```")) {
-            content = content.replace(/^```/, "").replace(/```$/, "").trim();
-          }
-
-          resultJson = JSON.parse(content);
-          break; // Berhasil, keluar dari loop
-        } else {
-          lastErrorMsg = data?.error?.message || `Model ${model} gagal memproses.`;
+    // Panggil Gemini API dengan parameter JSON murni
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptText }] }],
+        generationConfig: {
+          response_mime_type: "application/json"
         }
-      } catch (e: any) {
-        lastErrorMsg = e.message;
-      }
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      const errorMsg = data?.error?.message || "Terjadi kesalahan pada Gemini API.";
+      return NextResponse.json({ message: `Gemini Error (${response.status}): ${errorMsg}` }, { status: 500 });
     }
 
-    if (!resultJson) {
-      return NextResponse.json({ message: `Gemini Error: ${lastErrorMsg}` }, { status: 500 });
+    if (!data.candidates || !data.candidates[0]?.content?.parts[0]?.text) {
+      return NextResponse.json({ message: "Gemini tidak mengembalikan respons teks valid." }, { status: 500 });
     }
+
+    const rawText = data.candidates[0].content.parts[0].text;
+    const result = JSON.parse(rawText);
 
     return NextResponse.json({
       success: true,
       videoUrl,
-      clips: resultJson.clips || [],
+      clips: result.clips || [],
     });
   } catch (error: any) {
     return NextResponse.json(
