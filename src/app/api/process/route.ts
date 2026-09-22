@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "llama-3.1-8b-instant",
         messages: [
           {
             role: "system",
@@ -44,7 +44,6 @@ export async function POST(req: Request) {
 
     let content = data.choices[0].message.content.trim();
     
-    // Hapus format markdown json jika AI mengembalikannya dalam triple backticks
     if (content.startsWith("```json")) {
       content = content.replace(/^```json/, "").replace(/```$/, "").trim();
     } else if (content.startsWith("```")) {
