@@ -8,41 +8,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "URL Video wajib diisi." }, { status: 400 });
     }
 
-    const apiKey = process.env.GROQ_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ message: "GROQ_API_KEY belum dipasang di Environment Variables Vercel!" }, { status: 500 });
+      return NextResponse.json({ message: "GEMINI_API_KEY belum dipasang di Environment Variables Vercel!" }, { status: 500 });
     }
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const promptText = `Kamu adalah AI Video Editor profesional. Analisis video YouTube berikut: ${videoUrl}. Hasilkan 3 rekomendasi klip pendek menarik (TikTok/Reels). Kembalikan HANYA format JSON valid seperti ini tanpa markdown: {"clips": [{"id":"1", "title":"Judul Klip", "startTime":"00:30", "endTime":"01:15", "viralScore": 90, "summary":"Rangkuman singkat", "reason":"Alasan viral"}]}`;
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          {
-            role: "system",
-            content: "Kamu adalah AI Video Editor profesional. Diberikan URL video YouTube, buat 3 rekomendasi klip video pendek menarik. Kembalikan HANYA format JSON valid tanpa teks lain: {\"clips\": [{\"id\":\"1\", \"title\":\"Judul Klip\", \"startTime\":\"00:30\", \"endTime\":\"01:15\", \"viralScore\": 90, \"summary\":\"Rangkuman singkat\", \"reason\":\"Alasan viral\"}]}"
-          },
-          {
-            role: "user",
-            content: `Analisis video YouTube ini dan berikan 3 klip terbaik: ${videoUrl}`
-          }
-        ],
-        temperature: 0.5
+        contents: [{ parts: [{ text: promptText }] }]
       })
     });
 
     const data = await response.json();
 
-    if (!response.ok || !data.choices || !data.choices[0]) {
-      const errorMsg = data?.error?.message || "Respons AI tidak valid atau API Key bermasalah.";
-      return NextResponse.json({ message: `Groq Error: ${errorMsg}` }, { status: 500 });
+    if (!response.ok || !data.candidates || !data.candidates[0]) {
+      const errorMsg = data?.error?.message || "Respons Gemini AI tidak valid atau API Key salah.";
+      return NextResponse.json({ message: `Gemini Error: ${errorMsg}` }, { status: 500 });
     }
 
-    let content = data.choices[0].message.content.trim();
+    let content = data.candidates[0].content.parts[0].text.trim();
     
     if (content.startsWith("```json")) {
       content = content.replace(/^```json/, "").replace(/```$/, "").trim();
