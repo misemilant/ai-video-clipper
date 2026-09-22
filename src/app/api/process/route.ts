@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export async function POST(req: Request) {
   try {
@@ -13,40 +14,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "GEMINI_API_KEY belum dipasang di Environment Variables Vercel!" }, { status: 500 });
     }
 
-    const promptText = `Kamu adalah AI Video Editor profesional. Analisis video YouTube berikut: ${videoUrl}. Hasilkan 3 rekomendasi klip pendek menarik (TikTok/Reels). Kembalikan JSON dengan struktur seperti ini: {"clips": [{"id":"1", "title":"Judul Klip", "startTime":"00:30", "endTime":"01:15", "viralScore": 90, "summary":"Rangkuman singkat", "reason":"Alasan viral"}]}`;
-
-    // Panggil Gemini API dengan parameter JSON murni
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: promptText }] }],
-        generationConfig: {
-          response_mime_type: "application/json"
-        }
-      })
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      generationConfig: { responseMimeType: "application/json" }
     });
 
-    const data = await response.json();
+    const promptText = `Kamu adalah AI Video Editor profesional. Analisis video YouTube berikut: ${videoUrl}. Hasilkan 3 rekomendasi klip pendek menarik (TikTok/Reels). Kembalikan JSON dengan struktur persis seperti ini: {"clips": [{"id":"1", "title":"Judul Klip", "startTime":"00:30", "endTime":"01:15", "viralScore": 90, "summary":"Rangkuman singkat", "reason":"Alasan viral"}]}`;
 
-    if (!response.ok) {
-      const errorMsg = data?.error?.message || "Terjadi kesalahan pada Gemini API.";
-      return NextResponse.json({ message: `Gemini Error (${response.status}): ${errorMsg}` }, { status: 500 });
-    }
+    const result = await model.generateContent(promptText);
+    const responseText = result.response.text();
 
-    if (!data.candidates || !data.candidates[0]?.content?.parts[0]?.text) {
-      return NextResponse.json({ message: "Gemini tidak mengembalikan respons teks valid." }, { status: 500 });
-    }
-
-    const rawText = data.candidates[0].content.parts[0].text;
-    const result = JSON.parse(rawText);
+    const data = JSON.parse(responseText);
 
     return NextResponse.json({
       success: true,
       videoUrl,
-      clips: result.clips || [],
+      clips: data.clips || [],
     });
   } catch (error: any) {
     return NextResponse.json(
